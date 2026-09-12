@@ -1,0 +1,3 @@
+/* System fallbacks keep the app usable without remote font requests. */
+@font-face{font-family:'Spikoo Sans';src:local('Inter'),local('Aptos');font-display:swap}
+@font-face{font-family:'Spikoo Hand';src:local('Segoe Print'),local('Comic Sans MS');font-display:swap}

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Spikoo local AI check</title>
+<style>body{font:18px system-ui;max-width:850px;margin:40px auto;padding:20px}button{padding:12px;margin:8px}pre{white-space:pre-wrap}</style>
+<h1>Spikoo local AI check</h1>
+<p>Development check using a short computer-generated voice sample. Uses the signed-in Puter allowance. No learner records are created.</p>
+<button id="connect" disabled>Connect Puter</button><button id="original" disabled>Test transcription pipeline</button><button id="fixed" disabled>Test full analysis service</button>
+<pre id="output" role="status">Loading SDK…</pre>
+<script type="module">
+import { loadPuter, authorizePuter } from '/src/services/puterService.ts';
+import { transcribeRecording } from '/src/services/transcriptionService.ts';
+import { analyzeEnglish } from '/src/services/englishAnalysisService.ts';
+const output = document.querySelector('#output');
+const buttons = [...document.querySelectorAll('button')];
+let sdk;
+function reportError(error) {
+  const parts = [];
+  function read(value, depth=0) {
+    if (depth>3 || value==null) return;
+    if (typeof value==='string' || typeof value==='number') { parts.push(String(value)); return; }
+    for (const key of ['code','message','error','status','cause']) if (value[key]!==undefined) read(value[key],depth+1);
+  }
+  read(error);
+  output.textContent += '\nERROR: '+parts.join(' | ').replace(/Bearer\s+\S+|https?:\/\/\S+|data:\S+|[A-Za-z0-9_-]{60,}/g,'[redacted]').slice(0,1500);
+}
+async function recordedFixture() {
+  const fixture = new URLSearchParams(location.search).get('fixture') || 'ai-check-heera.wav';
+  const response = await fetch('/test-results/'+encodeURIComponent(fixture));
+  if (!response.ok) throw new Error('Synthetic fixture is missing');
+  const context = new AudioContext();
+  const audio = await context.decodeAudioData(await response.arrayBuffer());
+  const source = context.createBufferSource(); source.buffer=audio;
+  const destination = context.createMediaStreamDestination(); source.connect(destination);
+  const recorder = new MediaRecorder(destination.stream,{mimeType:'audio/webm;codecs=opus',audioBitsPerSecond:64000});
+  const chunks=[];
+  try {
+    const done = new Promise((resolve,reject)=>{recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};recorder.onstop=()=>resolve(new Blob(chunks,{type:recorder.mimeType}));recorder.onerror=reject;source.onended=()=>recorder.stop()});
+    await context.resume(); recorder.start(250); source.start();
+    return await done;
+  } finally { destination.stream.getTracks().forEach(track=>track.stop()); await context.close(); }
+}
+document.querySelector('#connect').onclick=()=>{authorizePuter().then(()=>{output.textContent='Puter connected';buttons.forEach(b=>b.disabled=false)}).catch(reportError)};
+async function run(full) {
+  buttons.forEach(b=>b.disabled=true); output.textContent='Preparing a browser-recorded synthetic voice sample…';
+  try {
+    const blob=await recordedFixture(); output.textContent+=`\nRecording: ${blob.type}, ${blob.size} bytes. Transcribing…`;
+    const transcript=await transcribeRecording(blob); output.textContent+='\nTRANSCRIPTION: '+transcript;
+    if (full) {
+      output.textContent+='\nChecking English…';
+      const result=await analyzeEnglish(transcript,{id:'diagnostic',text:'Tell me about your day.',level:'intermediate',category:'Daily life',prompts:[]});
+      output.textContent+='\nANALYSIS PASS: '+JSON.stringify(result,null,2);
+    }
+  } catch(error) { reportError(error); } finally { buttons.forEach(b=>b.disabled=false); }
+}
+document.querySelector('#original').onclick=()=>run(false);
+document.querySelector('#fixed').onclick=()=>run(true);
+loadPuter().then(value=>{sdk=value;output.textContent='SDK ready. '+(sdk.auth.isSignedIn()?'Puter is signed in.':'Connect Puter before testing.');buttons.forEach(b=>b.disabled=false)}).catch(reportError);
+</script></html>

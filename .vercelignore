@@ -1,0 +1,10 @@
+.git/
+.vercel/
+node_modules/
+dist/
+.env
+.env.*
+test-results/
+.sites-runtime/
+*.log
+*.tsbuildinfo

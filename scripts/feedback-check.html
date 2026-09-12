@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Spikoo feedback regression</title>
+<style>body{font:16px system-ui;max-width:900px;margin:40px auto}button{padding:12px;margin:8px}pre{white-space:pre-wrap}</style>
+<h1>Feedback regression</h1>
+<p>Synthetic English text only. Uses Puter allowance; does not save practice records.</p>
+<button id="connect">Connect Puter</button><button id="legacy">Check current AI response</button><button id="service">Check feedback service</button>
+<pre id="output">Loading…</pre>
+<script type="module">
+import { loadPuter, authorizePuter, extractChatText, withPuterTimeout } from '/src/services/puterService.ts';
+import { TEACHER_PROMPT, analyzeEnglish } from '/src/services/englishAnalysisService.ts';
+import { parseAnalysis, splitSentences } from '/src/lib/analysis.ts';
+const transcript = 'Yesterday I go to market and I buy some vegetable. My friend call me because he need help to carry his bags. I helped him and then we goes to his home. He was very happy and say thank you to me. I feel good because helping other people is important for me.';
+const topic = { id:'diagnostic', text:'Describe a time you helped someone.', level:'intermediate',category:'Personal experience',prompts:[] };
+const output = document.querySelector('#output');
+const buttons = [...document.querySelectorAll('button')];
+document.querySelector('#connect').onclick=()=>authorizePuter().then(()=>output.textContent='Connected').catch(()=>output.textContent='Puter connection failed');
+async function run(legacy) {
+  buttons.forEach(b=>b.disabled=true); output.textContent='Checking synthetic paragraph…';
+  try {
+    if (legacy) {
+      const sdk=await loadPuter();
+      const result=await withPuterTimeout(sdk.ai.chat([{role:'system',content:TEACHER_PROMPT},{role:'user',content:JSON.stringify({topic:topic.text,level:topic.level,originalTranscript:transcript,sentences:splitSentences(transcript).map(({id,text})=>({id,text}))})}],{model:'gpt-5-nano',stream:false,max_tokens:6500,reasoning_effort:'low'}));
+      const raw=extractChatText(result);
+      output.textContent='Response metadata: '+JSON.stringify({finish_reason:result.finish_reason,usage:result.usage,messageKeys:Object.keys(result.message||{}),responseKeys:Object.keys(result)})+'\nSynthetic AI response:\n'+raw+'\n\nValidation: ';
+      parseAnalysis(raw,transcript); output.textContent+='PASS';
+    } else {
+      const result=await analyzeEnglish(transcript,topic);
+      output.textContent='SERVICE PASS\n'+JSON.stringify(result,null,2);
+    }
+  } catch(error) { output.textContent+='\nFAIL: '+(error instanceof Error?error.message:'Provider request failed'); }
+  finally { buttons.forEach(b=>b.disabled=false); }
+}
+document.querySelector('#legacy').onclick=()=>run(true);
+document.querySelector('#service').onclick=()=>run(false);
+loadPuter().then(sdk=>output.textContent=sdk.auth.isSignedIn()?'Puter ready':'Connect Puter to test').catch(()=>output.textContent='SDK could not load');
+</script></html>
